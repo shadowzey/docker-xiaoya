@@ -32,6 +32,14 @@ else
     echo "${ALIYUN_OPEN_TOKEN}" > /data/myopentoken.txt
 fi
 
+# 生成配置，115Cookie
+if [[ -n "${ONEONEFIVE_COOKIE:-}" ]]; then
+    echo "使用115网盘..."
+    echo "${ONEONEFIVE_COOKIE}" > /data/ali2115.txt
+else
+    rm -rf /data/ali2115.txt
+fi
+
 # 生成配置，阿里云转存目录folder_id
 if [ ${#ALIYUN_FOLDER_ID} -ne 40 ]; then
     echo "长度不对,阿里云盘 folder id是40位长"
@@ -80,6 +88,7 @@ if [ -n "${PIKPAK_SHARE_LIST:-}" ]; then
 else
     rm -rf /data/pikpakshare_list.txt
 fi
+
 
 # 挂载额外的阿里云盘分享
 if [ -n "${ALI_SHARE_LIST:-}" ]; then
