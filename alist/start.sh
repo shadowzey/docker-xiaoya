@@ -35,7 +35,7 @@ fi
 # 生成配置，115Cookie
 if [[ -n "${ONEONEFIVE_COOKIE:-}" ]]; then
     echo "使用115网盘..."
-    echo "${ONEONEFIVE_COOKIE}" > /data/ali2115.txt
+    printf "%b" "${ONEONEFIVE_COOKIE}" > /data/ali2115.txt
 else
     rm -rf /data/ali2115.txt
 fi
