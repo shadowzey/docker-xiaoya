@@ -1,4 +1,4 @@
-FROM xiaoyaliu/alist:hostmode
+FROM xiaoyaliu/alist:latest
 
 LABEL MAINTAINER me@monlor.com
 
