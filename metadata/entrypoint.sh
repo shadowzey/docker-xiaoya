@@ -2,13 +2,15 @@
 
 set -e
 
-echo "等待alist启动完成..."
-while ! curl -s -f -m 1 "${ALIST_ADDR:=http://alist:5678}" > /dev/null; do
+ALIST_ADDR=${ALIST_ADDR:-http://alist:5678}
+
+echo "检查alist连通性..."
+while ! curl -s --fail "${ALIST_ADDR}/api/public/settings" | grep -q 200; do
     sleep 2
 done
 
-echo "alist启动完成，可能需要一段时间加载数据，等待5分钟后开始下载元数据..."
-sleep "${WAIT_ALIT_TIME:=300}"
+echo "alist启动完成，等待10秒后开始下载元数据..."
+sleep 10
 
 MEDIA_DIR="/media"
 crontabs=""
@@ -26,6 +28,9 @@ fi
 echo "开始下载元数据，如果有问题无法解决，请删除目录 ${MEDIA_DIR}/temp 下的所有文件重新启动."
 
 disk_check() {
+    if [ "${DISK_CHECK_ENABLED:-true}" = "false" ]; then
+        return
+    fi
     # 磁盘检测
     dir="$1"
     size="$2"
@@ -40,7 +45,8 @@ disk_check() {
 
 download_meta() {
     file=$1
-    path=$2
+    # 元数据路径
+    path=${2:-}
     echo "Downloading ${file}..."
     # 检查历史文件，如果存在残留则删除
     if [ -f "${MEDIA_DIR}/temp/${file}.aria2" ]; then
@@ -56,15 +62,26 @@ download_meta() {
     fi
 
     # 重试5次下载，包含.aria2则重试
+    success=false
     for i in {1..5}; do
         echo "Downloading ${file}, try ${i}..."
-        aria2c -o "${file}" --allow-overwrite=true --auto-file-renaming=false --enable-color=false -c -x6 "${ALIST_ADDR}/d/元数据/${path}${file}"
-        if [ ! -f "${file}.aria2" ]; then
+        echo "Link is ${ALIST_ADDR}/d/元数据/${file}"
+        if aria2c -o "${file}" --allow-overwrite=true --auto-file-renaming=false --enable-color=false -c -x6 "${ALIST_ADDR}/d/元数据/${path}${file}"; then
+            # 下载的文件小于10M，下载失败，删除
+            if [ "$(stat -c %s "${file}")" -lt 10000000 ]; then
+                echo "Download ${file} failed, file size less than 10M, retry after 10 seconds."
+                rm -rf "${file}"
+                rm -rf "${file}.aria2"
+                sleep 10
+                continue
+            fi
+            # 下载成功
+            success=true
             break
         fi
     done
-    # 如果还存在aria2，或者下载的文件小于10M，则删除
-    if [ -f "${file}.aria2" ] || [ "$(stat -c %s "${file}")" -lt 10000000 ]; then
+    # 如果还存在aria2
+    if [ "${success}" = "false" ]; then
         echo "Download ${file} failed."
         rm -rf "${file}"
         rm -rf "${file}.aria2"
@@ -191,7 +208,7 @@ if [ "${EMBY_ENABLED:=false}" = "true" ]; then
         crontabs="${crontabs}\n${random_min} ${random_hour} */${AUTO_UPDATE_EMBY_INTERVAL:=7} * * /emby.sh update"
     fi
 
-    if [ "${AUTO_UPDATE_METADATA_ENABLED:=false}" = "true" ]; then
+    if [ "${AUTO_UPDATE_EMBY_METADATA_ENABLED:=false}" = "true" ]; then
         echo "启动定时更新Emby媒体数据任务..."
         # 随机生成一个时间，避免给服务器造成压力
         random_min=$(shuf -i 0-59 -n 1)

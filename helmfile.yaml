@@ -29,7 +29,6 @@ releases:
           ALIYUN_FOLDER_ID: 
           AUTO_UPDATE_ENABLED: true
           AUTO_CLEAR_ENABLED: true
-          FORCE_LOGIN: false
           WEBDAV_PASSWORD: 
         volumes:
         - name: data
@@ -73,7 +72,7 @@ releases:
           EMBY_ENABLED: true
           JELLYFIN_ENABLED: false
           AUTO_UPDATE_EMBY_CONFIG_ENABLED: true
-          AUTO_UPDATE_METADATA_ENABLED: true
+          AUTO_UPDATE_EMBY_METADATA_ENABLED: true
         volumes:
         - name: data
           mountPath: /etc/xiaoya
