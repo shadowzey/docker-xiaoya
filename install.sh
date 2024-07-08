@@ -12,6 +12,11 @@ sedsh() {
   fi
 }
 
+# 解除read输入长度限制
+if [[ "$(uname -o)" = "Darwin" ]]; then
+  stty -icanon
+fi
+
 # 格式https://xxx.com/
 GH_PROXY="${GH_PROXY:=}"
 # 格式xxx.com
@@ -79,15 +84,30 @@ read -rp "请输入服务部署目录（默认/opt/xiaoya）: " install_path
 install_path=${install_path:=/opt/xiaoya}
 
 # 检查服务是否已经运行
+update=0
 if [ -f "$install_path/docker-compose.yml" ]; then
   # 询问用户是否要更新服务
-  echo
-  echo "检查到服务已存在，更新会覆盖docker-compose.yml文件，不会覆盖env文件"
-  read -rp "是否更新服务？(y/n): " update
-  if [ "${update}" != "y" ]; then
-    echo "退出安装"
-    exit 1
-  fi
+  cat <<-EOF
+
+更新方式：
+1. 全部更新，会覆盖更新docker-compose.yml和env配置
+2. 部分更新，仅覆盖更新docker-compose.yml
+3. 退出脚本，不更新
+EOF
+  read -rp "请选择更新方式（默认为1）: " update
+  update=${update:-1}
+  case $update in
+    1|2)
+      # 备份
+      cp -rf "$install_path/env" "$install_path/env.bak"
+      cp -rf "$install_path/docker-compose.yml" "$install_path/docker-compose.yml.bak"
+      ;;
+    *)
+      echo "退出安装"
+      exit 1
+      ;;
+  esac
+  
 fi
 
 DOCKER_HOME="$(docker info | grep "Docker Root Dir" | awk -F ':' '{print$2}')"
@@ -99,7 +119,7 @@ if [ -d "$install_path/data" ]; then
 fi
 cat <<-EOF
 
-请选择数据保存位置：
+数据保存位置：
 1. Docker卷（数据保存在: ${DOCKER_HOME}/volumes）
 2. 服务部署目录（数据保存在: ${install_path}）
 EOF
@@ -109,12 +129,16 @@ data_location=${res:-${data_location}}
 token=""
 open_token=""
 folder_id=""
+quark_cookie=""
+pan115_cookie=""
 
 # 如果是更新服务，则从原有的compose配置中获取token等信息
-if [ "${update:-}" = "y" ]; then
-  token=$(grep ALIYUN_TOKEN "$install_path/env" 2> /dev/null | awk -F '=' '{print $2}')
-  open_token=$(grep ALIYUN_OPEN_TOKEN "$install_path/env" 2> /dev/null | awk -F '=' '{print $2}')
-  folder_id=$(grep ALIYUN_FOLDER_ID "$install_path/env" 2> /dev/null | awk -F '=' '{print $2}')
+if [ "${update}" != "0" ]; then
+  token=$(grep ALIYUN_TOKEN "$install_path/env" 2> /dev/null | cut -d '=' -f2-)
+  open_token=$(grep ALIYUN_OPEN_TOKEN "$install_path/env" 2> /dev/null | cut -d '=' -f2-)
+  folder_id=$(grep ALIYUN_FOLDER_ID "$install_path/env" 2> /dev/null | cut -d '=' -f2-)
+  quark_cookie=$(grep QUARK_COOKIE "$install_path/env" 2> /dev/null | cut -d '=' -f2-)
+  pan115_cookie=$(grep PAN115_COOKIE "$install_path/env" 2> /dev/null | cut -d '=' -f2-)
 fi
 
 # 让用户输入阿里云盘TOKEN，token获取方式教程：https://alist.nn.ci/zh/guide/drivers/aliyundrive.html 
@@ -146,6 +170,16 @@ if [ ${#folder_id} -ne 40 ]; then
   echo "长度不对,阿里云盘 folder id是40位"
   exit 1
 fi
+
+echo 
+echo "登陆夸克网盘，浏览器F12，点击network，随便点一个请求，找到里面的Cookie值"
+read -rp "请输入夸克网盘Cookie值(默认为$quark_cookie): " res
+quark_cookie=${res:=$quark_cookie}
+
+echo 
+echo "登陆115网盘，浏览器F12，点击network，随便点一个请求，找到里面的Cookie值"
+read -rp "请输入115网盘Cookie值(默认为$pan115_cookie): " res
+pan115_cookie=${res:=$pan115_cookie}
 
 # 选择部署服务类型，alist + emby (默认), alist, alist + jellyfin, alist + emby + jellyfin
 echo
@@ -183,12 +217,14 @@ cd "$install_path"
 
 echo "开始生成配置文件docker-compose${service_type}.yml..."
 curl -#Lo "$install_path/docker-compose.yml" "${DOWNLOAD_URL}/docker-compose${service_type}.yml"
-if [ ! -f "$install_path/env" ]; then
+if [ "${update}" != "2" ]; then
   curl -#Lo "$install_path/env" "${DOWNLOAD_URL}/env"
 fi
 sedsh "s#ALIYUN_TOKEN=.*#ALIYUN_TOKEN=$token#g" env
 sedsh "s#ALIYUN_OPEN_TOKEN=.*#ALIYUN_OPEN_TOKEN=$open_token#g" env
 sedsh "s#ALIYUN_FOLDER_ID=.*#ALIYUN_FOLDER_ID=$folder_id#g" env
+sedsh "s#QUARK_COOKIE=.*#QUARK_COOKIE=$quark_cookie#g" env
+sedsh "s#PAN115_COOKIE=.*#PAN115_COOKIE=$pan115_cookie#g" env
 
 if [ -n "$IMAGE_PROXY" ]; then
   sedsh -E "s#image: [^/]+#image: ${IMAGE_PROXY}#g" docker-compose.yml
